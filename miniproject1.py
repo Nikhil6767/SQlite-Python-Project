@@ -1,6 +1,6 @@
 import sqlite3
 import sys
-
+import time
 def login(c):
 	while True:
 		print("=====LOGIN/SIGNUP=====")
@@ -13,7 +13,7 @@ def login(c):
 				print("incorrect password")
 				continue
 			print("entered as customer")
-			return "c"
+			return "c", customer[0]
 		elif editor:
 			if editor[1] != pwd:
 				print("incorrect password")
@@ -22,6 +22,10 @@ def login(c):
 			return "e"
 		else:
 			print("no such person found in the database.")
+			'''
+			do we need to check if new user cid already exists? also do we need to c.commit after excecuting
+			the insert values?
+			'''
 			name = input("if you wish to signup enter your name or nothing to go back to login/signup: ")
 			if name == "":
 				continue
@@ -31,7 +35,13 @@ def login(c):
 
 
 #-- Customer Functions --#
-def start_session():
+def start_session(user_id, c, conn):
+	current_date = time.strftime("%Y-%m-%d")
+	print(current_date)
+	max_sid = c.execute("SELECT MAX(s.sid) FROM sessions s").fetchone()[0]
+	new_sid = max_sid + 1
+	c.execute("INSERT INTO sessions VALUES (?, ?, ?, ?)", (new_sid, user_id, current_date, None))
+	conn.commit()
 	return
 
 def search():
@@ -51,7 +61,7 @@ def update():
 	return
 
 
-def main(user, login_loop):
+def main(user, user_id, login_loop, c, conn):
 	if user == "c":
 		loop = True
 		while loop:
@@ -66,7 +76,7 @@ def main(user, login_loop):
 			''')
 			user_choice = int(input("Select an option: "))
 			if user_choice == 1:
-				start_session()
+				start_session(user_id, c, conn)
 			elif user_choice == 2:
 				search()
 			elif user_choice == 3:
@@ -105,13 +115,10 @@ def main(user, login_loop):
 			else:
 				print("invalid input")
 	
-		
 	return login_loop
 
 if __name__ == "__main__":
-	'''
-	Add login screen first then go to main loop on sucessful login
-	'''
+
 	login_loop = True
 	try:
 		conn = sqlite3.connect(sys.argv[1])
@@ -120,10 +127,10 @@ if __name__ == "__main__":
 		
 	except:
 		print("You must enter a valid database name as an argument")
-		login_loop = False
+		exit()
 
 	while login_loop:
-		user = login(c)
-		login_loop = main(user, login_loop)
-		
+		user, user_id = login(c)
+		login_loop = main(user, user_id, login_loop, c, conn)
+
 	conn.close()
