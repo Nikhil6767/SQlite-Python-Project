@@ -13,13 +13,13 @@ def login(c):
 				print("incorrect password")
 				continue
 			print("entered as customer")
-			return "c", customer[0]
+			return "c", id
 		elif editor:
 			if editor[1] != pwd:
 				print("incorrect password")
 				continue
 			print("entered as editor")
-			return "e"
+			return "e", id
 		else:
 			print("no such person found in the database.")
 			'''
@@ -31,7 +31,7 @@ def login(c):
 				continue
 			c.execute("INSERT INTO customers VALUES (?, ?, ?)", (id, name, pwd))
 			print("sign up successful!")
-			return "c"
+			return "c", id
 
 
 #-- Customer Functions --#
@@ -54,8 +54,37 @@ def end_session():
 	return
 
 #-- Editor Functions --#
-def add_movies():
-	return
+def add_movies(c, conn):
+	mid = input("enter movie id: ")
+	movies = c.execute("SELECT * FROM movies M WHERE M.mid=?;", (mid,)).fetchone()
+	if not movies:
+		title = input("enter movie title: ")
+		year = input("enter movie year: ")
+		runtime = input("enter movie runtime: ")
+		casts = input("enter space seperated cast members id: ").split()
+		c.execute("INSERT INTO movies VALUES (?, ?, ?, ?)", (mid, title, year, runtime))
+		for cast in casts:
+			person = c.execute("SELECT * FROM moviePeople MP WHERE MP.pid=?;", (cast,)).fetchone()
+			name = person[1] if person else ""
+			birth_year = person[2] if person else ""
+			if not person:
+				print("this cast member does not yet exist")
+				name = input("enter cast name: ")
+				birth_year = input("enter birth year of cast: ")
+				c.execute("INSERT INTO moviePeople VALUES (?, ?, ?)", (cast, name, birth_year))
+			print(str(name) + " " + str(birth_year))
+			confirm = input("to reject this cast enter nothing, otherwise enter that cast members role: ")
+			if confirm == "":
+				print("rejected " + name)
+				continue
+			else:
+				c.execute("INSERT INTO casts VALUES (?, ?, ?)", (mid, cast, confirm))
+		conn.commit()
+		return
+	else:
+		print("movie id is not unique")
+		return
+
 
 def update():
 	return
@@ -103,7 +132,7 @@ def main(user, user_id, login_loop, c, conn):
 			''')
 			user_choice = int(input("Select an option: "))
 			if user_choice == 1:
-				add_movies()
+				add_movies(c, conn)
 			elif user_choice == 2:
 				update()
 			elif user_choice == 3:
