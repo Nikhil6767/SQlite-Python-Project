@@ -56,7 +56,7 @@ def end_session():
 #-- Editor Functions --#
 def add_movies(c, conn):
 	mid = input("enter movie id: ")
-	movies = c.execute("SELECT * FROM movies M WHERE M.mid=?;", (mid,)).fetchone()
+	movies = c.execute("SELECT * FROM movies M WHERE LOWER(M.mid)=?;", (mid.lower(),)).fetchone()
 	if not movies:
 		title = input("enter movie title: ")
 		year = input("enter movie year: ")
@@ -64,7 +64,7 @@ def add_movies(c, conn):
 		casts = input("enter space seperated cast members id: ").split()
 		c.execute("INSERT INTO movies VALUES (?, ?, ?, ?)", (mid, title, year, runtime))
 		for cast in casts:
-			person = c.execute("SELECT * FROM moviePeople MP WHERE MP.pid=?;", (cast,)).fetchone()
+			person = c.execute("SELECT * FROM moviePeople MP WHERE LOWER(MP.pid)=?;", (cast.lower(),)).fetchone()
 			name = person[1] if person else ""
 			birth_year = person[2] if person else ""
 			if not person:
@@ -86,7 +86,74 @@ def add_movies(c, conn):
 		return
 
 
-def update():
+def update(c, conn):
+	print(
+		'''
+1. monthly report
+2. annual report
+3. all-time report
+		''')
+	report = input("Select a report: ")
+	if report == "1":
+		movie_pairs = c.execute("""SELECT M1.mid, M2.mid, COUNT(DISTINCT W1.cid) AS customerCount 
+								   FROM movies M1, movies M2, watch W1 INNER JOIN sessions S1 ON LOWER(W1.sid) = LOWER(S1.sid), watch W2 INNER JOIN sessions S2 ON LOWER(W2.sid) = LOWER(S2.sid)
+								   WHERE LOWER(M1.mid) = LOWER(W1.mid) AND LOWER(M2.mid) = LOWER(W2.mid) AND LOWER(M1.mid) != LOWER(M2.mid) AND LOWER(W1.cid) = LOWER(W2.cid)
+								   AND S1.sdate <= date(S2.sdate, "+1 months") AND S1.sdate >= date(S2.sdate, "-1 months") AND W1.duration >= M1.runtime * 0.5 AND W2.duration >= M2.runtime * 0.5
+								   GROUP BY M1.mid, M2.mid
+								   ORDER BY customerCount DESC;""", ()).fetchall()
+	elif report == "2":
+		movie_pairs = c.execute("""SELECT M1.mid, M2.mid, COUNT(DISTINCT W1.cid) AS customerCount 
+								   FROM movies M1, movies M2, watch W1 INNER JOIN sessions S1 ON LOWER(W1.sid) = LOWER(S1.sid), watch W2 INNER JOIN sessions S2 ON LOWER(W2.sid) = LOWER(S2.sid)
+								   WHERE LOWER(M1.mid) = LOWER(W1.mid) AND LOWER(M2.mid) = LOWER(W2.mid) AND LOWER(M1.mid) != LOWER(M2.mid) AND LOWER(W1.cid) = LOWER(W2.cid)
+								   AND S1.sdate <= date(S2.sdate, "+1 years") AND S1.sdate >= date(S2.sdate, "-1 years") AND W1.duration >= M1.runtime * 0.5 AND W2.duration >= M2.runtime * 0.5
+								   GROUP BY M1.mid, M2.mid
+								   ORDER BY customerCount DESC;""", ()).fetchall()
+	elif report == "3":
+		movie_pairs = c.execute("""SELECT M1.mid, M2.mid, COUNT(DISTINCT W1.cid) AS customerCount 
+								   FROM movies M1, movies M2, watch W1 INNER JOIN sessions S1 ON LOWER(W1.sid) = LOWER(S1.sid), watch W2 INNER JOIN sessions S2 ON LOWER(W2.sid) = LOWER(S2.sid)
+								   WHERE LOWER(M1.mid) = LOWER(W1.mid) AND LOWER(M2.mid) = LOWER(W2.mid) AND LOWER(M1.mid) != LOWER(M2.mid) AND LOWER(W1.cid) = LOWER(W2.cid)
+								   AND W1.duration >= M1.runtime * 0.5 AND W2.duration >= M2.runtime * 0.5
+								   GROUP BY M1.mid, M2.mid
+								   ORDER BY customerCount DESC;""", ()).fetchall()
+		
+	else:
+		print("did not select report...exiting")
+		return	
+	i = 0
+	while i < len(movie_pairs):
+		recommended = c.execute("SELECT * FROM recommendations R WHERE LOWER(R.watched)=? AND LOWER(R.recommended)=?;", (str(movie_pairs[i][0]), str(movie_pairs[i][1]))).fetchone()
+		if not recommended:
+			print(str(i + 1) + ". " + str(movie_pairs[i][0]) + ", " + str(movie_pairs[i][1]) + ", number who watched: " + str(movie_pairs[i][2]) + ", in recommended: no")
+		else:
+			print(str(i + 1) + ". " + str(movie_pairs[i][0]) + ", " + str(movie_pairs[i][1]) + ", number who watched: " + str(movie_pairs[i][2]) + ", in recommended: yes, score: " + str(recommended[2]))
+		i += 1
+
+	while True:
+		index = input("select an index to update a movie or enter nothing to exit: ")
+		if index == "":
+			print("exiting")
+			return
+		try:
+			movie_pair = movie_pairs[int(index) - 1]
+			recommended = c.execute("SELECT * FROM recommendations R WHERE LOWER(R.watched)=? AND LOWER(R.recommended)=?;", (str(movie_pair[0]), str(movie_pair[1]))).fetchone()
+			if not recommended:
+				score = input("this movie pair is not yet recommended, enter a score to add it, otherwise nothing: ")
+				if score == "":
+					print("not added")
+					continue
+				else:
+					c.execute("INSERT INTO recommendations VALUES (?, ?, ?)", (movie_pair[0], movie_pair[1], score))
+			else:
+				score = input("this movie pair is recommended, enter a score to change it, \"del\" to delete it or nothing otherwise: ")
+				if score == "":
+					print("nothing changed")
+				elif score == "del":
+					c.execute("DELETE FROM recommendations WHERE LOWER(watched)=? AND LOWER(recommended)=?;", (str(movie_pair[0]), str(movie_pair[1])))
+				else:
+					c.execute("UPDATE recommendations SET score=? WHERE LOWER(watched)=? AND LOWER(recommended)=?;", (float(score), str(movie_pair[0]), str(movie_pair[1])))
+		except:
+			print("not a valid index...try again")
+	conn.commit()
 	return
 
 
@@ -103,19 +170,19 @@ def main(user, user_id, login_loop, c, conn):
 5. logout
 6. End Program
 			''')
-			user_choice = int(input("Select an option: "))
-			if user_choice == 1:
+			user_choice = input("Select an option: ")
+			if user_choice == "1":
 				start_session(user_id, c, conn)
-			elif user_choice == 2:
+			elif user_choice == "2":
 				search()
-			elif user_choice == 3:
+			elif user_choice == "3":
 				end_movie()
-			elif user_choice == 4:
+			elif user_choice == "4":
 				end_session()
-			elif user_choice == 5:
+			elif user_choice == "5":
 				## logout goes back to login screen ##
 				loop = False
-			elif user_choice == 6:
+			elif user_choice == "6":
 				loop = False
 				login_loop = False
 			else:
@@ -130,15 +197,15 @@ def main(user, user_id, login_loop, c, conn):
 3. logout
 4. End Program
 			''')
-			user_choice = int(input("Select an option: "))
-			if user_choice == 1:
+			user_choice = input("Select an option: ")
+			if user_choice == "1":
 				add_movies(c, conn)
-			elif user_choice == 2:
-				update()
-			elif user_choice == 3:
+			elif user_choice == "2":
+				update(c, conn)
+			elif user_choice == "3":
 				## logout goes back to login screen ##
 				loop = False
-			elif user_choice == 4:
+			elif user_choice == "4":
 				loop = False
 				login_loop = False
 			else:
