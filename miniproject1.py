@@ -37,14 +37,155 @@ def login(c):
 #-- Customer Functions --#
 def start_session(user_id, c, conn):
 	current_date = time.strftime("%Y-%m-%d")
-	print(current_date)
+	# get the current max_sid, then add 1 to create a unique id
 	max_sid = c.execute("SELECT MAX(s.sid) FROM sessions s").fetchone()[0]
 	new_sid = max_sid + 1
+	# insert the newly made session into the table
 	c.execute("INSERT INTO sessions VALUES (?, ?, ?, ?)", (new_sid, user_id, current_date, None))
+	print("Session started")
 	conn.commit()
-	return
+	return new_sid
 
-def search():
+def search(user_id, sid, c, conn):
+	if sid == None:
+		print("Please start a session")
+		return
+	# get keywords from the user
+	keywords = input("Enter in keywords to search seperated by space: ").split()
+	results = []
+	mov_titles = []
+	for word in keywords:
+		# search for the keyword anywhere in title, name or role
+		word = '%' + word + '%'
+		search = c.execute("""
+			SELECT m.title, m.year, m.runtime FROM movies m LEFT OUTER JOIN casts c ON c.mid = m.mid LEFT OUTER JOIN moviePeople p ON c.pid = p.pid
+			WHERE lower(m.title) LIKE lower(?) OR lower(c.role) LIKE lower(?) OR lower(p.name) LIKE lower(?) ORDER BY (CASE WHEN 
+			lower(m.title) LIKE lower(?) AND lower(c.role) LIKE lower(?) AND lower(p.name) LIKE lower(?) THEN 1 WHEN
+			lower(m.title) LIKE lower(?) AND lower(c.role) LIKE lower(?) THEN 2 WHEN
+			lower(m.title) LIKE lower(?) AND lower(p.name) LIKE lower(?) THEN 2 WHEN
+			lower(p.name) LIKE lower(?) AND lower(c.role) LIKE lower(?) THEN 2 ELSE 3 END)""", (word, word, word, word, word, word, word, word, word,
+				word, word, word)).fetchall()
+
+		if search[0] not in results:
+			results += search
+
+	if len(results) == 0:
+		print("No matches found")
+		return
+
+	elif len(results) > 5:
+		print("We found the following matches:")
+		i = 0
+		for j in range(1,6):
+			print(j, "Movie: ", results[i][0], "Year: ", results[i][1], "Duration: ", results[i][2])
+			mov_titles.append(results[i][0])
+			i += 1
+			
+
+		keep_search = True
+		while keep_search:
+			more_movies = input("See more resutls? (Y for more, N to pick a movie): ")
+
+			if more_movies == 'y' or more_movies == 'Y':
+				if i == len(results):
+					print("no more movies")
+					break
+
+				while (i + 5 <= len(results)):
+					mov_titles = []
+					for j in range(1,6):
+						print(j, "Movie: ", results[i][0], "Year: ", results[i][1], "Duration: ", results[i][2])
+						mov_titles.append(results[i][0])
+						i += 1
+						
+					break
+
+				mov_titles = []
+				remaining = len(results) - i
+				for j in range(1, remaining + 1):
+					print(j, "Movie: ", results[i][0], "Year: ", results[i][1], "Duration: ", results[i][2])
+					mov_titles.append(results[i][0])
+					i += 1
+				print(i)
+
+			elif more_movies == 'n' or more_movies == 'N':
+				keep_search = False
+
+			else:
+				print("Invalid input")
+
+	else:
+		mov_titles = []
+		print("We found the following matches:")
+		for i in range(1, len(results)+1):
+			print(i, "Movie: ", results[i-1][0], "Year: ", results[i-1][1], "Duration: ", results[i-1][2])
+			mov_titles.append(results[i-1][0])
+
+	pick_mov = True
+	while pick_mov:
+		movie_choice = int(input("Select a movie: "))
+		try:
+			title = mov_titles[movie_choice-1]
+		except:
+			print("Invalid movie choice, pick again")
+			continue
+		pick_mov = False
+	
+	cast_mem = c.execute("SELECT p.name FROM moviePeople p, movies m, casts c WHERE m.title = ? AND m.mid = c.mid AND c.pid = p.pid", (title,)).fetchall()
+	print("Cast: ")
+	for i in range(len(cast_mem)):
+		print(cast_mem[i][0])
+
+	num_watched = c.execute("SELECT count(w.cid) FROM movies m, watch w WHERE m.title = ? AND m.mid = w.mid AND w.duration >= 0.5*m.runtime", (title,)).fetchone()[0]
+	print("Number of customers who have watched: ", num_watched)
+
+	mov_screen = True
+	while mov_screen:
+		print("""
+1. Select a cast member to follow
+2. Watch the movie\n""")
+		options = int(input("How will you proceed: "))
+		if options == 1:
+			for i in range(len(cast_mem)):
+				print(i+1, cast_mem[i][0])
+
+			follow = int(input("Which cast member would you like to follow? "))
+			
+			pid = c.execute("SELECT pid from moviePeople where name = ?", (cast_mem[follow-1][0],)).fetchone()[0]
+	
+			already_follow = c.execute("SELECT cid, pid FROM follows WHERE cid = ? AND pid = ?", (user_id, pid)).fetchall()
+	
+			if len(already_follow) > 0:
+				print("You already follow this person")
+				break
+
+			c.execute("INSERT INTO follows VALUES (?, ?)", (user_id, pid))
+			print("You are now following ", cast_mem[follow-1][0])
+			conn.commit()
+			mov_screen = False
+			return
+
+		elif options == 2:
+			mid = c.execute("SELECT mid FROM movies WHERE title = ?", (title,)).fetchone()[0]
+
+			already_watch = c.execute("SELECT * FROM movies m, watch w WHERE w.mid = ? AND w.cid = ?", (mid, user_id)).fetchall()
+	
+			if len(already_watch) > 0:
+				print("You are already watching this movie")
+				break
+			
+			c.execute("INSERT INTO watch VALUES (?, ?, ?, ?)", (sid, user_id, mid, None))
+			print("Now watching ", title)
+			conn.commit()
+
+			current_time = time.strftime("%H:%M:%S")
+
+			mov_screen = False
+			return current_time
+
+		else:
+			print("Invalid input, pick again")
+
 	return
 
 def end_movie():
@@ -158,6 +299,8 @@ def update(c, conn):
 
 
 def main(user, user_id, login_loop, c, conn):
+	sid = None
+	# customer options
 	if user == "c":
 		loop = True
 		while loop:
@@ -172,21 +315,21 @@ def main(user, user_id, login_loop, c, conn):
 			''')
 			user_choice = input("Select an option: ")
 			if user_choice == "1":
-				start_session(user_id, c, conn)
+				sid = start_session(user_id, c, conn)
 			elif user_choice == "2":
-				search()
+				time = search(user_id, sid, c, conn)
 			elif user_choice == "3":
 				end_movie()
 			elif user_choice == "4":
 				end_session()
 			elif user_choice == "5":
-				## logout goes back to login screen ##
 				loop = False
 			elif user_choice == "6":
 				loop = False
 				login_loop = False
 			else:
 				print("invalid input")
+	# editor options
 	elif user == "e":
 		loop = True
 		while loop:
@@ -203,7 +346,6 @@ def main(user, user_id, login_loop, c, conn):
 			elif user_choice == "2":
 				update(c, conn)
 			elif user_choice == "3":
-				## logout goes back to login screen ##
 				loop = False
 			elif user_choice == "4":
 				loop = False
