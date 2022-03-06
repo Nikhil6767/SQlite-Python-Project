@@ -189,6 +189,7 @@ def search(user_id, sid, c, conn):
 	return
 
 def end_movie(start_time, user_id, c, conn):
+
 	movies_watching = c.execute("SELECT m.title FROM movies m, watch w WHERE w.mid = m.mid AND w.cid = ?;", (user_id,)).fetchall()
 	if len(movies_watching) == 0:
 		print("You are not watching any movies.")
@@ -197,6 +198,10 @@ def end_movie(start_time, user_id, c, conn):
 	for i in range(1, len(movies_watching)+1):
 		print(i, movies_watching[i-1][0])
 	
+	if start_time == 0:
+		print("cannot stop watching these movies (Can only stop watching movies started in this program)")
+		return
+		
 	stop = int(input("Which movie did you want to stop watching? "))
 	title = movies_watching[stop-1][0]
 
