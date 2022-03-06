@@ -1,6 +1,7 @@
 import sqlite3
 import sys
 import time
+from datetime import datetime
 def login(c):
 	while True:
 		print("=====LOGIN/SIGNUP=====")
@@ -66,14 +67,14 @@ def search(user_id, sid, c, conn):
 			lower(p.name) LIKE lower(?) AND lower(c.role) LIKE lower(?) THEN 2 ELSE 3 END)""", (word, word, word, word, word, word, word, word, word,
 				word, word, word)).fetchall()
 
+		if len(search) == 0:
+			print("No matches found")
+			return
+
 		if search[0] not in results:
 			results += search
 
-	if len(results) == 0:
-		print("No matches found")
-		return
-
-	elif len(results) > 5:
+	if len(results) > 5:
 		print("We found the following matches:")
 		i = 0
 		for j in range(1,6):
@@ -81,7 +82,6 @@ def search(user_id, sid, c, conn):
 			mov_titles.append(results[i][0])
 			i += 1
 			
-
 		keep_search = True
 		while keep_search:
 			more_movies = input("See more resutls? (Y for more, N to pick a movie): ")
@@ -167,7 +167,6 @@ def search(user_id, sid, c, conn):
 
 		elif options == 2:
 			mid = c.execute("SELECT mid FROM movies WHERE title = ?", (title,)).fetchone()[0]
-
 			already_watch = c.execute("SELECT * FROM movies m, watch w WHERE w.mid = ? AND w.cid = ?", (mid, user_id)).fetchall()
 	
 			if len(already_watch) > 0:
@@ -178,7 +177,8 @@ def search(user_id, sid, c, conn):
 			print("Now watching ", title)
 			conn.commit()
 
-			current_time = time.strftime("%H:%M:%S")
+			current_time = datetime.now()
+			current_time = datetime.strptime(current_time.strftime("%H:%M:%S"), "%H:%M:%S")
 
 			mov_screen = False
 			return current_time
@@ -188,7 +188,27 @@ def search(user_id, sid, c, conn):
 
 	return
 
-def end_movie():
+def end_movie(start_time, user_id, c, conn):
+	movies_watching = c.execute("SELECT m.title FROM movies m, watch w WHERE w.mid = m.mid AND w.cid = ?;", (user_id,)).fetchall()
+	if len(movies_watching) == 0:
+		print("You are not watching any movies.")
+		return
+
+	for i in range(1, len(movies_watching)+1):
+		print(i, movies_watching[i-1][0])
+	
+	stop = int(input("Which movie did you want to stop watching? "))
+	title = movies_watching[stop-1][0]
+
+	mid = c.execute("SELECT mid FROM movies WHERE title = ?;", (title,)).fetchone()[0]
+
+	end_time = datetime.now()
+	end_time = datetime.strptime(end_time.strftime("%H:%M:%S"), "%H:%M:%S")
+	
+	duration = round((end_time-start_time).total_seconds() / 60, 2)
+	
+	c.execute("UPDATE watch SET duration = ? WHERE cid = ? AND mid = ?;", (duration, user_id, mid))
+	conn.commit()
 	return
 
 def end_session():
@@ -300,6 +320,7 @@ def update(c, conn):
 
 def main(user, user_id, login_loop, c, conn):
 	sid = None
+	start_time = 0
 	# customer options
 	if user == "c":
 		loop = True
@@ -317,9 +338,9 @@ def main(user, user_id, login_loop, c, conn):
 			if user_choice == "1":
 				sid = start_session(user_id, c, conn)
 			elif user_choice == "2":
-				time = search(user_id, sid, c, conn)
+				start_time = search(user_id, sid, c, conn)
 			elif user_choice == "3":
-				end_movie()
+				end_movie(start_time, user_id, c, conn)
 			elif user_choice == "4":
 				end_session()
 			elif user_choice == "5":
