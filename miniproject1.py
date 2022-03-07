@@ -70,10 +70,11 @@ def search(user_id, sid, c, conn):
 		if len(search) == 0:
 			print("No matches found")
 			return
-
-		if search[0] not in results:
-			results += search
-
+		# add only unique results to our results list
+		for i in range(0, len(search)):
+			if search[i] not in results:
+				results.append(search[i])
+		
 	if len(results) > 5:
 		print("We found the following matches:")
 		i = 0
@@ -99,14 +100,13 @@ def search(user_id, sid, c, conn):
 						i += 1
 						
 					break
-
+				# display remaining movies after exhausting groups of 5
 				mov_titles = []
 				remaining = len(results) - i
 				for j in range(1, remaining + 1):
 					print(j, "Movie: ", results[i][0], "Year: ", results[i][1], "Duration: ", results[i][2])
 					mov_titles.append(results[i][0])
 					i += 1
-				print(i)
 
 			elif more_movies == 'n' or more_movies == 'N':
 				keep_search = False
@@ -131,11 +131,13 @@ def search(user_id, sid, c, conn):
 			continue
 		pick_mov = False
 	
+	# Retrieve cast information of a movie
 	cast_mem = c.execute("SELECT p.name FROM moviePeople p, movies m, casts c WHERE m.title = ? AND m.mid = c.mid AND c.pid = p.pid", (title,)).fetchall()
 	print("Cast: ")
 	for i in range(len(cast_mem)):
 		print(cast_mem[i][0])
 
+	# Retrieve the number of customers who watched the selected movie
 	num_watched = c.execute("SELECT count(w.cid) FROM movies m, watch w WHERE m.title = ? AND m.mid = w.mid AND w.duration >= 0.5*m.runtime", (title,)).fetchone()[0]
 	print("Number of customers who have watched: ", num_watched)
 
@@ -146,6 +148,11 @@ def search(user_id, sid, c, conn):
 2. Watch the movie\n""")
 		options = int(input("How will you proceed: "))
 		if options == 1:
+
+			if len(cast_mem) == 0:
+				print("No cast members found")
+				break
+
 			for i in range(len(cast_mem)):
 				print(i+1, cast_mem[i][0])
 
