@@ -3,7 +3,7 @@ import sys
 import time
 from datetime import datetime
 # login for both user and editor
-def login(c, conn):
+def login(c):
 	while True:
 		print("=====LOGIN/SIGNUP=====")
 		id = input("enter your id: ")
@@ -275,7 +275,7 @@ def add_movies(c, conn):
 			confirm = input("to reject this cast enter nothing, otherwise enter that cast members role: ")
 			if confirm == "":
 				print("rejected " + name)
-				continue
+				continue	
 			else:
 				c.execute("INSERT INTO casts VALUES (?, ?, ?)", (mid, cast, confirm))
 		conn.commit()
@@ -300,14 +300,14 @@ def update(c, conn):
 		movie_pairs = c.execute("""SELECT M1.mid, M2.mid, COUNT(DISTINCT W1.cid) AS customerCount 
 								   FROM movies M1, movies M2, watch W1 INNER JOIN sessions S1 ON LOWER(W1.sid) = LOWER(S1.sid), watch W2 INNER JOIN sessions S2 ON LOWER(W2.sid) = LOWER(S2.sid)
 								   WHERE LOWER(M1.mid) = LOWER(W1.mid) AND LOWER(M2.mid) = LOWER(W2.mid) AND LOWER(M1.mid) != LOWER(M2.mid) AND LOWER(W1.cid) = LOWER(W2.cid)
-								   AND S1.sdate <= date(S2.sdate, "+1 months") AND S1.sdate >= date(S2.sdate, "-1 months") AND W1.duration >= M1.runtime * 0.5 AND W2.duration >= M2.runtime * 0.5
+								   AND S1.sdate <= date(S2.sdate, "+1 months") AND S1.sdate >= date(S2.sdate, "-30 days") AND W1.duration >= M1.runtime * 0.5 AND W2.duration >= M2.runtime * 0.5
 								   GROUP BY M1.mid, M2.mid
 								   ORDER BY customerCount DESC;""", ()).fetchall()
 	elif report == "2":
 		movie_pairs = c.execute("""SELECT M1.mid, M2.mid, COUNT(DISTINCT W1.cid) AS customerCount 
 								   FROM movies M1, movies M2, watch W1 INNER JOIN sessions S1 ON LOWER(W1.sid) = LOWER(S1.sid), watch W2 INNER JOIN sessions S2 ON LOWER(W2.sid) = LOWER(S2.sid)
 								   WHERE LOWER(M1.mid) = LOWER(W1.mid) AND LOWER(M2.mid) = LOWER(W2.mid) AND LOWER(M1.mid) != LOWER(M2.mid) AND LOWER(W1.cid) = LOWER(W2.cid)
-								   AND S1.sdate <= date(S2.sdate, "+1 years") AND S1.sdate >= date(S2.sdate, "-1 years") AND W1.duration >= M1.runtime * 0.5 AND W2.duration >= M2.runtime * 0.5
+								   AND S1.sdate <= date(S2.sdate, "+1 years") AND S1.sdate >= date(S2.sdate, "-365 days") AND W1.duration >= M1.runtime * 0.5 AND W2.duration >= M2.runtime * 0.5
 								   GROUP BY M1.mid, M2.mid
 								   ORDER BY customerCount DESC;""", ()).fetchall()
 	elif report == "3":
@@ -434,7 +434,7 @@ if __name__ == "__main__":
 		exit()
 
 	while login_loop:
-		# login then go into main functions
+		# login then go into main functions	
 		user, user_id = login(c)
 		conn.commit()
 		login_loop = main(user, user_id, login_loop, c, conn)
