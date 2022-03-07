@@ -2,7 +2,8 @@ import sqlite3
 import sys
 import time
 from datetime import datetime
-def login(c):
+# login for both user and editor
+def login(c, conn):
 	while True:
 		print("=====LOGIN/SIGNUP=====")
 		id = input("enter your id: ")
@@ -10,23 +11,22 @@ def login(c):
 		customer = c.execute("SELECT * FROM customers C WHERE LOWER(C.cid)=?;", (id.lower(),)).fetchone()
 		editor = c.execute("SELECT * FROM editors E WHERE LOWER(E.eid)=?;", (id.lower(),)).fetchone()
 		if customer:
+			# if we entered as a customer
 			if customer[2] != pwd:
 				print("incorrect password")
 				continue
 			print("entered as customer")
 			return "c", id
 		elif editor:
+			# if we entered as editor
 			if editor[1] != pwd:
 				print("incorrect password")
 				continue
 			print("entered as editor")
 			return "e", id
 		else:
+			# signup if neither customer or editor exists.
 			print("no such person found in the database.")
-			'''
-			do we need to check if new user cid already exists? also do we need to c.commit after excecuting
-			the insert values?
-			'''
 			name = input("if you wish to signup enter your name or nothing to go back to login/signup: ")
 			if name == "":
 				continue
@@ -196,7 +196,7 @@ def search(user_id, sid, c, conn):
 	return
 
 def end_movie(start_time, user_id, c, conn):
-
+	# check if we are watching movies
 	movies_watching = c.execute("SELECT m.title FROM movies m, watch w WHERE w.mid = m.mid AND w.cid = ?;", (user_id,)).fetchall()
 	if len(movies_watching) == 0:
 		print("You are not watching any movies.")
@@ -208,7 +208,7 @@ def end_movie(start_time, user_id, c, conn):
 	if start_time == 0:
 		print("cannot stop watching these movies (Can only stop watching movies started in this program)")
 		return
-		
+	# select movie to stop watching
 	stop = int(input("Which movie did you want to stop watching? "))
 	title = movies_watching[stop-1][0]
 
@@ -218,12 +218,13 @@ def end_movie(start_time, user_id, c, conn):
 	end_time = datetime.strptime(end_time.strftime("%H:%M:%S"), "%H:%M:%S")
 	
 	duration = round((end_time-start_time).total_seconds() / 60, 2)
-	
+	# add duration to watch
 	c.execute("UPDATE watch SET duration = ? WHERE cid = ? AND mid = ?;", (duration, user_id, mid))
 	conn.commit()
 	return
 
 def end_session(start_time, sid, user_id, c, conn):
+	# see if a session exists
 	session = c.execute("SELECT S.sdate FROM sessions S WHERE S.cid=? AND S.sid=? AND S.duration IS NULL", (user_id, sid)).fetchone()
 	if (not session):
 		print("you must first start a session. exiting...")
@@ -250,15 +251,18 @@ def end_session(start_time, sid, user_id, c, conn):
 
 #-- Editor Functions --#
 def add_movies(c, conn):
+	# find movie
 	mid = input("enter movie id: ")
 	movies = c.execute("SELECT * FROM movies M WHERE LOWER(M.mid)=?;", (mid.lower(),)).fetchone()
 	if not movies:
+		# get and insert movie info
 		title = input("enter movie title: ")
 		year = input("enter movie year: ")
 		runtime = input("enter movie runtime: ")
 		casts = input("enter space seperated cast members id: ").split()
 		c.execute("INSERT INTO movies VALUES (?, ?, ?, ?)", (mid, title, year, runtime))
 		for cast in casts:
+			# insert cast members
 			person = c.execute("SELECT * FROM moviePeople MP WHERE LOWER(MP.pid)=?;", (cast.lower(),)).fetchone()
 			name = person[1] if person else ""
 			birth_year = person[2] if person else ""
@@ -277,11 +281,13 @@ def add_movies(c, conn):
 		conn.commit()
 		return
 	else:
+		# if movies already exists
 		print("movie id is not unique")
 		return
 
 
 def update(c, conn):
+	# select report
 	print(
 		'''
 1. monthly report
@@ -289,6 +295,7 @@ def update(c, conn):
 3. all-time report
 		''')
 	report = input("Select a report: ")
+	# find report depending on selected
 	if report == "1":
 		movie_pairs = c.execute("""SELECT M1.mid, M2.mid, COUNT(DISTINCT W1.cid) AS customerCount 
 								   FROM movies M1, movies M2, watch W1 INNER JOIN sessions S1 ON LOWER(W1.sid) = LOWER(S1.sid), watch W2 INNER JOIN sessions S2 ON LOWER(W2.sid) = LOWER(S2.sid)
@@ -312,10 +319,12 @@ def update(c, conn):
 								   ORDER BY customerCount DESC;""", ()).fetchall()
 		
 	else:
+		# if invalid report selected
 		print("did not select report...exiting")
 		return	
 	i = 0
 	while i < len(movie_pairs):
+		# display report information
 		recommended = c.execute("SELECT * FROM recommendations R WHERE LOWER(R.watched)=? AND LOWER(R.recommended)=?;", (str(movie_pairs[i][0]), str(movie_pairs[i][1]))).fetchone()
 		if not recommended:
 			print(str(i + 1) + ". " + str(movie_pairs[i][0]) + ", " + str(movie_pairs[i][1]) + ", number who watched: " + str(movie_pairs[i][2]) + ", in recommended: no")
@@ -330,6 +339,7 @@ def update(c, conn):
 			print("exiting")
 			return
 		try:
+			# recommend a movie pair or change score
 			movie_pair = movie_pairs[int(index) - 1]
 			recommended = c.execute("SELECT * FROM recommendations R WHERE LOWER(R.watched)=? AND LOWER(R.recommended)=?;", (str(movie_pair[0]), str(movie_pair[1]))).fetchone()
 			if not recommended:
@@ -348,6 +358,7 @@ def update(c, conn):
 				else:
 					c.execute("UPDATE recommendations SET score=? WHERE LOWER(watched)=? AND LOWER(recommended)=?;", (float(score), str(movie_pair[0]), str(movie_pair[1])))
 		except:
+			# if invalid movie pair
 			print("not a valid index...try again")
 
 
@@ -413,16 +424,19 @@ if __name__ == "__main__":
 
 	login_loop = True
 	try:
+		# connect to sqlite3 
 		conn = sqlite3.connect(sys.argv[1])
 		c = conn.cursor()
 		conn.commit()
-		
+
 	except:
 		print("You must enter a valid database name as an argument")
 		exit()
 
 	while login_loop:
+		# login then go into main functions
 		user, user_id = login(c)
+		conn.commit()
 		login_loop = main(user, user_id, login_loop, c, conn)
 
 	conn.close()
