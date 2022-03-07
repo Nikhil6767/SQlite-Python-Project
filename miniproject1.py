@@ -37,7 +37,7 @@ def login(c):
 
 #-- Customer Functions --#
 def start_session(user_id, c, conn):
-	current_date = time.strftime("%Y-%m-%d")
+	current_date = time.strftime("%Y-%m-%d-%H:%M:%S")
 	# get the current max_sid, then add 1 to create a unique id
 	max_sid = c.execute("SELECT MAX(s.sid) FROM sessions s").fetchone()[0]
 	new_sid = max_sid + 1
@@ -174,7 +174,7 @@ def search(user_id, sid, c, conn):
 
 		elif options == 2:
 			mid = c.execute("SELECT mid FROM movies WHERE title = ?", (title,)).fetchone()[0]
-			already_watch = c.execute("SELECT * FROM movies m, watch w WHERE w.mid = ? AND w.cid = ?", (mid, user_id)).fetchall()
+			already_watch = c.execute("SELECT * FROM movies m, watch w WHERE w.mid = ? AND w.cid = ? AND w.sid = ? AND w.duration IS NULL;", (mid, user_id, sid)).fetchall()
 	
 			if len(already_watch) > 0:
 				print("You are already watching this movie")
@@ -223,8 +223,30 @@ def end_movie(start_time, user_id, c, conn):
 	conn.commit()
 	return
 
-def end_session():
-	return
+def end_session(start_time, sid, user_id, c, conn):
+	session = c.execute("SELECT S.sdate FROM sessions S WHERE S.cid=? AND S.sid=? AND S.duration IS NULL", (user_id, sid)).fetchone()
+	if (not session):
+		print("you must first start a session. exiting...")
+		return
+	end = input("enter \"end\" if you would like to enter the current session: ")
+	if (end.lower() == "end"):
+		# end session
+		sdate = datetime.strptime(session[0], "%Y-%m-%d-%H:%M:%S")
+		edate = datetime.strptime(datetime.now().strftime("%Y-%m-%d-%H:%M:%S"), "%Y-%m-%d-%H:%M:%S")
+		dur = round((edate - sdate).total_seconds()/ 60, 2)
+		c.execute("UPDATE sessions SET duration=? WHERE cid=? AND sid=?;", (dur, user_id, sid))
+
+		# end watching any existing movies
+		end_time = datetime.now()
+		end_time = datetime.strptime(end_time.strftime("%H:%M:%S"), "%H:%M:%S")
+		duration = round((end_time-start_time).total_seconds() / 60, 2)
+		c.execute("UPDATE watch SET duration=? WHERE cid=? AND sid=? AND duration IS NULL;", (duration, user_id, sid))
+		conn.commit()
+		print("ending session...")
+		return
+	else:
+		print("chose not to end session. exiting...")
+		return
 
 #-- Editor Functions --#
 def add_movies(c, conn):
@@ -304,6 +326,7 @@ def update(c, conn):
 	while True:
 		index = input("select an index to update a movie or enter nothing to exit: ")
 		if index == "":
+			conn.commit()
 			print("exiting")
 			return
 		try:
@@ -326,8 +349,6 @@ def update(c, conn):
 					c.execute("UPDATE recommendations SET score=? WHERE LOWER(watched)=? AND LOWER(recommended)=?;", (float(score), str(movie_pair[0]), str(movie_pair[1])))
 		except:
 			print("not a valid index...try again")
-	conn.commit()
-	return
 
 
 def main(user, user_id, login_loop, c, conn):
@@ -354,7 +375,7 @@ def main(user, user_id, login_loop, c, conn):
 			elif user_choice == "3":
 				end_movie(start_time, user_id, c, conn)
 			elif user_choice == "4":
-				end_session()
+				end_session(start_time, sid, user_id, c, conn)
 			elif user_choice == "5":
 				loop = False
 			elif user_choice == "6":
