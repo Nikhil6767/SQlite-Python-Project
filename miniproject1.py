@@ -3,7 +3,7 @@ import sys
 import time
 from datetime import datetime
 # login for both user and editor
-def login(c):
+def login(c, conn):
 	while True:
 		print("=====LOGIN/SIGNUP=====")
 		id = input("enter your id: ")
@@ -175,7 +175,9 @@ def search(user_id, sid, c, conn):
 		elif options == 2:
 			mid = c.execute("SELECT mid FROM movies WHERE title = ?", (title,)).fetchone()[0]
 			already_watch = c.execute("SELECT * FROM movies m, watch w WHERE w.mid = ? AND w.cid = ? AND w.sid = ? AND w.duration IS NULL;", (mid, user_id, sid)).fetchall()
-	
+			
+			print(already_watch)
+
 			if len(already_watch) > 0:
 				print("You are already watching this movie")
 				break
@@ -195,9 +197,9 @@ def search(user_id, sid, c, conn):
 
 	return
 
-def end_movie(start_time, user_id, c, conn):
+def end_movie(start_time, user_id, sid, c, conn):
 	# check if we are watching movies
-	movies_watching = c.execute("SELECT m.title FROM movies m, watch w WHERE w.mid = m.mid AND w.cid = ?;", (user_id,)).fetchall()
+	movies_watching = c.execute("SELECT m.title FROM movies m, watch w WHERE w.mid = m.mid AND w.cid = ? AND w.sid = ?;", (user_id,sid)).fetchall()
 	if len(movies_watching) == 0:
 		print("You are not watching any movies.")
 		return
@@ -208,6 +210,7 @@ def end_movie(start_time, user_id, c, conn):
 	if start_time == 0:
 		print("cannot stop watching these movies (Can only stop watching movies started in this program)")
 		return
+		
 	# select movie to stop watching
 	stop = int(input("Which movie did you want to stop watching? "))
 	title = movies_watching[stop-1][0]
@@ -218,8 +221,15 @@ def end_movie(start_time, user_id, c, conn):
 	end_time = datetime.strptime(end_time.strftime("%H:%M:%S"), "%H:%M:%S")
 	
 	duration = round((end_time-start_time).total_seconds() / 60, 2)
-	# add duration to watch
-	c.execute("UPDATE watch SET duration = ? WHERE cid = ? AND mid = ?;", (duration, user_id, mid))
+
+	movie_runtime = c.execute("SELECT m.runtime FROM movies m, watch w WHERE w.mid = m.mid AND w.cid = ? AND m.title = ?;", (user_id, title)).fetchone()[0]
+
+	# add duration to watch, if the user watched more than the movie runtime, we assume they watched entire movie so we set the runtime as duration watched
+	if duration > movie_runtime:
+		c.execute("UPDATE watch SET duration = ? WHERE cid = ? AND mid = ?;", (movie_runtime, user_id, mid))
+	else:
+		c.execute("UPDATE watch SET duration = ? WHERE cid = ? AND mid = ?;", (duration, user_id, mid))
+
 	conn.commit()
 	return
 
@@ -384,7 +394,7 @@ def main(user, user_id, login_loop, c, conn):
 			elif user_choice == "2":
 				start_time = search(user_id, sid, c, conn)
 			elif user_choice == "3":
-				end_movie(start_time, user_id, c, conn)
+				end_movie(start_time, user_id, sid, c, conn)
 			elif user_choice == "4":
 				end_session(start_time, sid, user_id, c, conn)
 			elif user_choice == "5":
@@ -435,7 +445,7 @@ if __name__ == "__main__":
 
 	while login_loop:
 		# login then go into main functions	
-		user, user_id = login(c)
+		user, user_id = login(c, conn)
 		conn.commit()
 		login_loop = main(user, user_id, login_loop, c, conn)
 
