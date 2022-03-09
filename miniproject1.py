@@ -175,8 +175,6 @@ def search(user_id, sid, c, conn):
 		elif options == 2:
 			mid = c.execute("SELECT mid FROM movies WHERE title = ?", (title,)).fetchone()[0]
 			already_watch = c.execute("SELECT * FROM movies m, watch w WHERE w.mid = ? AND w.cid = ? AND w.sid = ? AND w.duration IS NULL;", (mid, user_id, sid)).fetchall()
-			
-			print(already_watch)
 
 			if len(already_watch) > 0:
 				print("You are already watching this movie")
